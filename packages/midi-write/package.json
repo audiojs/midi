@@ -1,0 +1,18 @@
+{
+  "name": "@audio/midi-write",
+  "version": "0.0.0",
+  "description": "Standard MIDI file writer — note events → SMF (mir-transcribe output target)",
+  "type": "module",
+  "sideEffects": false,
+  "private": true,
+  "keywords": [
+    "audio",
+    "midi",
+    "write"
+  ],
+  "license": "MIT",
+  "author": "Dmitry Iv. <dfcreative@gmail.com>",
+  "engines": {
+    "node": ">=18"
+  }
+}
