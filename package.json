@@ -1,10 +1,9 @@
 {
   "name": "@audio/midi",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "sideEffects": false,
   "description": "MIDI — umbrella for @audio/midi-* atoms (parse, write, soundfont rendering)",
-  "private": true,
   "workspaces": [
     "packages/*"
   ],
@@ -18,5 +17,26 @@
   "author": "Dmitry Iv. <dfcreative@gmail.com>",
   "engines": {
     "node": ">=18"
+  },
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js"
+  ],
+  "scripts": {
+    "test": "node test.js"
+  },
+  "dependencies": {
+    "@audio/midi-parse": "^1.0.0",
+    "@audio/midi-write": "^1.0.0"
+  },
+  "devDependencies": {
+    "tst": "^9.4.0"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
