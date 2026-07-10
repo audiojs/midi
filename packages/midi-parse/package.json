@@ -1,6 +1,6 @@
 {
   "name": "@audio/midi-parse",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Standard MIDI file parser — tracks, tempo map, note events",
   "type": "module",
   "sideEffects": false,
