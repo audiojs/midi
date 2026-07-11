@@ -1,6 +1,6 @@
 {
   "name": "@audio/midi",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "type": "module",
   "sideEffects": false,
   "description": "MIDI — umbrella for @audio/midi-* atoms (parse, write, soundfont rendering)",
@@ -42,5 +42,6 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/audiojs/midi.git"
-  }
+  },
+  "funding": "https://github.com/sponsors/audiojs"
 }

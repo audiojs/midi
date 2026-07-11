@@ -1,6 +1,6 @@
 {
   "name": "@audio/midi-parse",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Standard MIDI file parser — tracks, tempo map, note events",
   "type": "module",
   "sideEffects": false,
@@ -20,8 +20,10 @@
     "./package.json": "./package.json"
   },
   "files": [
-    "parse.js"
+    "parse.js",
+    "index.d.ts"
   ],
+  "types": "index.d.ts",
   "publishConfig": {
     "access": "public"
   },
@@ -29,5 +31,6 @@
     "type": "git",
     "url": "git+https://github.com/audiojs/midi.git",
     "directory": "packages/midi-parse"
-  }
+  },
+  "funding": "https://github.com/sponsors/audiojs"
 }

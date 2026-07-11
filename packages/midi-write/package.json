@@ -1,6 +1,6 @@
 {
   "name": "@audio/midi-write",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Standard MIDI file writer — note events → SMF (mir-transcribe output target)",
   "type": "module",
   "sideEffects": false,
@@ -20,8 +20,10 @@
     "./package.json": "./package.json"
   },
   "files": [
-    "write.js"
+    "write.js",
+    "index.d.ts"
   ],
+  "types": "index.d.ts",
   "publishConfig": {
     "access": "public"
   },
@@ -29,5 +31,6 @@
     "type": "git",
     "url": "git+https://github.com/audiojs/midi.git",
     "directory": "packages/midi-write"
-  }
+  },
+  "funding": "https://github.com/sponsors/audiojs"
 }
