@@ -1,0 +1,59 @@
+{
+  "name": "@audio/musicxml",
+  "version": "0.1.0",
+  "description": "MusicXML 4.0 writer/parser and ABC writer — note events ↔ notation",
+  "type": "module",
+  "sideEffects": false,
+  "main": "musicxml.js",
+  "types": "musicxml.d.ts",
+  "exports": {
+    ".": {
+      "types": "./musicxml.d.ts",
+      "default": "./musicxml.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "musicxml.js",
+    "musicxml.d.ts",
+    "quantize.js",
+    "spell.js",
+    "rhythm.js",
+    "measures.js",
+    "xml.js",
+    "write.js",
+    "read.js",
+    "abc.js",
+    "percussion.js",
+    "parts.js"
+  ],
+  "devDependencies": {
+    "tst": "^9.4.0"
+  },
+  "keywords": [
+    "audio",
+    "midi",
+    "musicxml",
+    "abc",
+    "notation",
+    "score",
+    "sheet-music"
+  ],
+  "license": "MIT",
+  "author": "Dmitry Iv. <dfcreative@gmail.com>",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node test.js"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/audiojs/midi.git",
+    "directory": "packages/musicxml"
+  },
+  "funding": "https://github.com/sponsors/audiojs"
+}

@@ -1,0 +1,51 @@
+{
+  "name": "@audio/subtitle",
+  "version": "0.1.0",
+  "description": "Timed-text subtitle formats — SRT, WebVTT, LRC (+ enhanced word-level), TTML: parse and write",
+  "type": "module",
+  "sideEffects": false,
+  "main": "subtitle.js",
+  "exports": {
+    ".": "./subtitle.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "subtitle.js",
+    "index.d.ts"
+  ],
+  "types": "index.d.ts",
+  "devDependencies": {
+    "tst": "^9.4.0"
+  },
+  "scripts": {
+    "test": "node test.js"
+  },
+  "keywords": [
+    "audio",
+    "subtitle",
+    "captions",
+    "srt",
+    "subrip",
+    "vtt",
+    "webvtt",
+    "lrc",
+    "lyrics",
+    "ttml",
+    "timed-text"
+  ],
+  "license": "MIT",
+  "author": "Dmitry Iv. <dfcreative@gmail.com>",
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/audiojs/midi.git",
+    "directory": "packages/subtitle"
+  },
+  "homepage": "https://github.com/audiojs/midi/tree/main/packages/subtitle",
+  "funding": "https://github.com/sponsors/audiojs"
+}

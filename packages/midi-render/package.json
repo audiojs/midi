@@ -1,0 +1,57 @@
+{
+  "name": "@audio/midi-render",
+  "version": "0.1.0",
+  "description": "MIDI → PCM — GM-mapped synth render, no soundfont, no samples",
+  "type": "module",
+  "sideEffects": false,
+  "main": "render.js",
+  "exports": {
+    ".": "./render.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "render.js",
+    "gm.js",
+    "index.d.ts"
+  ],
+  "types": "index.d.ts",
+  "dependencies": {
+    "@audio/midi-parse": "^1.0.2",
+    "@audio/note": "^1.0.2",
+    "@audio/synth-drum": "^2.0.1",
+    "@audio/synth-envelope": "^1.1.3",
+    "@audio/synth-fm": "^0.2.1",
+    "@audio/synth-modal": "^0.2.1",
+    "@audio/synth-noise": "^2.0.1",
+    "@audio/synth-osc": "^1.0.4",
+    "@audio/synth-pluck": "^1.1.3",
+    "@audio/synth-poly": "^1.2.1"
+  },
+  "devDependencies": {
+    "@audio/midi-write": "^1.0.2",
+    "@audio/pitch-yin": "^1.0.4",
+    "tst": "^9.4.0"
+  },
+  "keywords": [
+    "audio",
+    "midi",
+    "synth",
+    "gm",
+    "render",
+    "smf"
+  ],
+  "license": "MIT",
+  "author": "Dmitry Iv. <dfcreative@gmail.com>",
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/audiojs/midi.git",
+    "directory": "packages/midi-render"
+  },
+  "funding": "https://github.com/sponsors/audiojs"
+}

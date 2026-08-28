@@ -46,3 +46,35 @@ test('parse — rejects non-SMF input', () => {
 	try { parse(Uint8Array.from([1, 2, 3, 4, 5, 6, 7, 8])) } catch { threw = true }
 	ok(threw)
 })
+
+// -- 2026-08 atoms: render (GM synth), musicxml, subtitle — smoke through the umbrella; depth lives in each package --
+import { render, musicxml, parseMusicxml, toAbc, subtitle } from './index.js'
+
+test('render — a written SMF renders to PCM with the note audible at its pitch', () => {
+	let smf = write([{ time: 0, duration: 0.5, midi: 69, velocity: 0.9 }], { bpm: 120 })
+	let { channelData, sampleRate } = render(smf, { fs: 44100, channels: 1 })
+	is(sampleRate, 44100)
+	ok(channelData[0].length > 0.5 * 44100, 'covers the note + tail')
+	let g = f => { let w = 2 * Math.PI * f / 44100, c = 2 * Math.cos(w), s1 = 0, s2 = 0; for (let i = 0; i < 22050; i++) { let s0 = channelData[0][i] + c * s1 - s2; s2 = s1; s1 = s0 } return s1 * s1 + s2 * s2 - c * s1 * s2 }
+	ok(g(440) > 10 * g(415.3), '440 Hz dominates its lower neighbour semitone')
+})
+
+test('musicxml — notes → score → notes round trip; ABC body', () => {
+	let notes = [60, 62, 64, 65].map((midi, i) => ({ time: i * 0.5, duration: 0.5, midi, velocity: 0.8 }))
+	let xml = musicxml(notes, { bpm: 120, title: 'Scale' })
+	ok(xml.includes('<score-partwise') && xml.includes('<step>C</step>'), 'MusicXML document')
+	let back = parseMusicxml(xml)
+	is(back.parts[0].notes.map(n => n.midi).join(','), '60,62,64,65', 'pitches survive')
+	almost(back.parts[0].notes[3].time, 1.5, 1e-6, 'timing survives')
+	ok(/C D E F/.test(toAbc(notes, { bpm: 120 })), 'ABC body')
+})
+
+test('subtitle — SRT ↔ VTT ↔ LRC through the namespace export', () => {
+	let cues = [{ start: 1, end: 2.5, text: 'Hare Krishna' }, { start: 3, end: 4, text: 'Hare Rama' }]
+	let srt = subtitle.write(cues, 'srt')
+	ok(srt.startsWith('1\n00:00:01,000 --> 00:00:02,500\nHare Krishna'), 'SRT text')
+	let vtt = subtitle.write(subtitle.parse(srt), 'vtt')
+	ok(vtt.startsWith('WEBVTT'), 'VTT header')
+	is(subtitle.parse(vtt).cues.length, 2, 'VTT parses back')
+	ok(/\[00:01\.00\]Hare Krishna/.test(subtitle.write(cues, 'lrc')), 'LRC line')
+})
