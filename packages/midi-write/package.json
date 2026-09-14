@@ -16,7 +16,10 @@
   },
   "main": "write.js",
   "exports": {
-    ".": "./write.js",
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./write.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [

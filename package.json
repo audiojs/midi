@@ -20,11 +20,15 @@
   },
   "main": "index.js",
   "exports": {
-    ".": "./index.js",
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
-    "index.js"
+    "index.js",
+    "*.d.ts"
   ],
   "scripts": {
     "test": "node test.js"
@@ -46,5 +50,6 @@
     "type": "git",
     "url": "git+https://github.com/audiojs/midi.git"
   },
-  "funding": "https://github.com/sponsors/audiojs"
+  "funding": "https://github.com/sponsors/audiojs",
+  "types": "./index.d.ts"
 }

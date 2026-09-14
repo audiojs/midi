@@ -6,7 +6,10 @@
   "sideEffects": false,
   "main": "subtitle.js",
   "exports": {
-    ".": "./subtitle.js",
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./subtitle.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [

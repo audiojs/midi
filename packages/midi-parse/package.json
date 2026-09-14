@@ -16,7 +16,10 @@
   },
   "main": "parse.js",
   "exports": {
-    ".": "./parse.js",
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./parse.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [

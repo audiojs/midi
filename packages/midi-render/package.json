@@ -6,7 +6,10 @@
   "sideEffects": false,
   "main": "render.js",
   "exports": {
-    ".": "./render.js",
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./render.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
