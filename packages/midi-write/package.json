@@ -1,6 +1,6 @@
 {
   "name": "@audio/midi-write",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Standard MIDI file writer — note events → SMF (mir-transcribe output target)",
   "type": "module",
   "sideEffects": false,

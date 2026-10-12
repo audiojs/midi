@@ -1,6 +1,6 @@
 {
   "name": "@audio/midi",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "type": "module",
   "sideEffects": false,
   "description": "Symbolic & timed formats — umbrella for @audio/midi-* atoms (SMF parse, write, synth render), MusicXML/ABC notation, subtitles (SRT/VTT/LRC/TTML)",

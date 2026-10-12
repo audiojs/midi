@@ -1,6 +1,6 @@
 {
   "name": "@audio/midi-render",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "MIDI → PCM — GM-mapped synth render, no soundfont, no samples",
   "type": "module",
   "sideEffects": false,
