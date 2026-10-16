@@ -9,7 +9,7 @@ export interface InputNote {
 	midi?: number
 	/** normalized 0..1, default 0.8 */
 	velocity?: number
-	/** 0-based, default 0 — used to keep independently-voiced input notes from clipping each other */
+	/** 0-based, default 0 — carried through quantize(); voices follow overlap, not channel */
 	channel?: number
 	/** mir-drums percussion type, used when `midi` is absent on a percussion part */
 	type?: 'kick' | 'snare' | 'hihat' | string
@@ -69,7 +69,8 @@ export interface WriteOptions {
 }
 
 /**
- * Note events → MusicXML 4.0 (score-partwise). See README for the MusicXML 4.0 citation.
+ * Note events → MusicXML 4.0 (score-partwise); notes that overlap within a part are written as
+ * separate voices. See README for the MusicXML 4.0 citation.
  */
 export default function write(input: WriteInput, options?: WriteOptions): string
 
@@ -108,9 +109,9 @@ export interface ParseResult {
 export function parse(xml: string): ParseResult
 
 /**
- * Note events → ABC 2.1 tune. Renders the primary voice per part (a second concurrent
- * voice from unequal-duration overlaps at the same onset is not rendered — use `write`
- * for that). Same quantization options as `write`, plus `title`/`composer`.
+ * Note events → one ABC 2.1 tune: every voice of every part is an ABC voice (V:1, V:2, …),
+ * a part's voices on one staff (%%score). Same quantization options as `write`, plus
+ * `title`/`composer`.
  */
 export function toAbc(input: WriteInput, options?: WriteOptions): string
 
@@ -140,6 +141,6 @@ export interface QuantizedNote {
 
 /**
  * Seconds → beat-grid quantization: snaps onsets/durations to the nearest grid point
- * (optionally the better-fitting triplet grid), then clips same-voice overlaps.
+ * (optionally the better-fitting triplet grid). Overlapping notes are kept whole.
  */
 export function quantize(notes: InputNote[], options?: QuantizeOptions): QuantizedNote[]

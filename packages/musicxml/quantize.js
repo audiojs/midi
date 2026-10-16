@@ -51,23 +51,7 @@ export default function quantize (notes, opts = {}) {
 		})
 	}
 
-	// resolve same-voice overlaps by clipping the earlier note; notes sharing an onset
-	// (a chord) are left alone — that is not an overlap
-	let groups = new Map()
-	for (let n of out) {
-		let k = n.voice ?? n.channel ?? 0
-		if (!groups.has(k)) groups.set(k, [])
-		groups.get(k).push(n)
-	}
-	for (let g of groups.values()) {
-		g.sort((a, b) => a.beat - b.beat)
-		for (let i = 0; i < g.length - 1; i++) {
-			let a = g[i], b = g[i + 1]
-			if (b.beat <= a.beat) continue // chord (same onset) or out-of-order tie — leave as-is
-			if (a.beat + a.beats > b.beat) a.beats = Math.max(0, b.beat - a.beat)
-		}
-	}
-	out = out.filter(n => n.beats > 0)
+	// overlapping notes are kept whole: they are polyphony, and the writers give them separate voices
 	out.sort((a, b) => a.beat - b.beat || a.midi - b.midi)
 	return out
 }

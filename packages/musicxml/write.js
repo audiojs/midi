@@ -77,6 +77,11 @@ function typeChildren (seg) {
 	return kids
 }
 
+/** <time-modification> for a triplet value: its <type> sounds for actual/normal of its length. */
+function timeModification (seg) {
+	return seg.tuplet ? [el('time-modification', {}, [el('actual-notes', {}, String(seg.tuplet.actual)), el('normal-notes', {}, String(seg.tuplet.normal))])] : []
+}
+
 function notationsEl (tieStart, tieStop, tuplet, tupletPos) {
 	let kids = []
 	if (tieStop) kids.push(el('tied', { type: 'stop' }))
@@ -106,6 +111,7 @@ function eventNotes ({ event, voiceNum, divisions, spellFn, clef, accState, keyA
 				...durKids,
 				el('voice', {}, String(voiceNum)),
 				...typeChildren(seg),
+				...timeModification(seg),
 			]))
 		}
 		return notes
@@ -134,7 +140,7 @@ function eventNotes ({ event, voiceNum, divisions, spellFn, clef, accState, keyA
 			if (ni > 0) kids.push(el('chord'))
 			kids.push(...pitchOrUnpitched, ...durKids, el('voice', {}, String(voiceNum)), ...typeChildren(seg))
 			if (!percMap && n._accidental) kids.push(el('accidental', {}, n._accidental))
-			if (seg.tuplet) kids.push(el('time-modification', {}, [el('actual-notes', {}, String(seg.tuplet.actual)), el('normal-notes', {}, String(seg.tuplet.normal))]))
+			kids.push(...timeModification(seg))
 			if (percMap) {
 				let entry = percussionEntry(n)
 				if (entry && entry.notehead !== 'normal') kids.push(el('notehead', {}, entry.notehead))
@@ -202,10 +208,9 @@ export default function write (input, opts = {}) {
 
 	// ── each part's measures ──
 	let partEls = layouts.map(({ part, id, measures, edges, clef, percMap, spellFn }) => {
-		let accState = new Map() // per-measure — cleared at the top of every measure below
+		let accState = new Map() // shown accidentals, per measure and voice — cleared below
 		let measureEls = measures.map((measure, mi) => {
 			let kids = []
-			accState.clear() // accidentals are measure-scoped
 			if (mi === 0) {
 				let attrKids = [el('divisions', {}, String(divisions))]
 				attrKids.push(el('key', {}, [el('fifths', {}, String(percMap ? 0 : fifths)), ...(mode === 'minor' && !percMap ? [el('mode', {}, 'minor')] : [])]))
@@ -223,9 +228,14 @@ export default function write (input, opts = {}) {
 				]))
 			}
 
+			// each voice fills the measure, so <backup> by the whole measure returns to its start;
+			// voice 1 is written in every measure, another voice only where it holds a note
 			let measureTicks = Math.round((edges[mi + 1] - edges[mi]) * divisions)
+			let written = 0
 			measure.voices.forEach((voiceEvents, vi) => {
-				if (vi > 0) kids.push(el('backup', {}, [el('duration', {}, String(measureTicks))]))
+				if (vi > 0 && voiceEvents.every(e => e.rest)) return
+				if (written++) kids.push(el('backup', {}, [el('duration', {}, String(measureTicks))]))
+				accState.clear() // a voice written earlier may hold an accidental later in the bar
 				let brackets = tupletBrackets(voiceEvents)
 				voiceEvents.forEach((event, ei) => {
 					kids.push(...eventNotes({ event, voiceNum: vi + 1, divisions, spellFn, clef, accState, keyAlters: percMap ? percKeyAlters : keyAlters, percMap, bracket: brackets[ei] }))

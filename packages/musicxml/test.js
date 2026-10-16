@@ -1,5 +1,11 @@
 import test, { is, ok, almost, throws } from 'tst'
+import { readFileSync } from 'fs'
+import { spawnSync } from 'child_process'
+import parseMidi from '@audio/midi-parse'
+import abcjs from 'abcjs'
 import write, { parse, toAbc, quantize } from './musicxml.js'
+import { parse as parseXml, child, children, text } from './xml.js'
+import { decompose } from './rhythm.js'
 
 const SCALE_MIDI = [60, 62, 64, 65, 67, 69, 71, 72] // C D E F G A B c
 const scaleNotes = (bpm = 120) => SCALE_MIDI.map((midi, i) => ({ time: i * (60 / bpm / 1), duration: 60 / bpm, midi, velocity: 0.8 }))
@@ -293,12 +299,14 @@ test('parse robustness — ties expressed only via <notations><tied> (no <tie>) 
 	almost(notes[0].duration, 1, 1e-9, '2 quarters @ 120bpm default = 1s')
 })
 
-test('quantize — snaps onsets to the nearest grid and clips same-voice overlaps', () => {
+test('quantize — snaps onsets to the nearest grid; an overlapping note is kept whole', () => {
 	let notes = [{ time: 0.01, duration: 0.49, midi: 60 }, { time: 0.52, duration: 0.6, midi: 64 }]
 	let q = quantize(notes, { bpm: 120, grid: 16 })
 	is(q[0].beat, 0)
 	is(q[1].beat, 1)
-	ok(q[0].beat + q[0].beats <= q[1].beat + 1e-9, 'overlap resolved by clipping the earlier note')
+	is(q[0].beats, 1, 'onset and end snap to the grid')
+	let held = quantize([{ time: 0, duration: 2, midi: 48 }, { time: 0.5, duration: 0.5, midi: 72 }], { bpm: 120 })
+	is(held.map(n => n.beats), [4, 1], 'a held note under a later one keeps its length: overlap is polyphony, not an error')
 })
 
 test('write — throws on ambiguous input', () => {
@@ -308,4 +316,212 @@ test('write — throws on ambiguous input', () => {
 
 test('write — invalid key name throws', () => {
 	throws(() => write([{ time: 0, duration: 1, midi: 60 }], { key: 'H' }), null)
+})
+
+// ── voices: notes that overlap within one part ──────────────────────────────────────────────
+// MusicXML 4.0 (https://www.w3.org/2021/06/musicxml40/) holds a part's overlapping notes in
+// voices: <voice> names a note's voice, <backup> rewinds to write the next voice over the same
+// measure, <chord/> stacks a note on the one before it. These invariants hold for every score.
+
+const written = [] // every score the checks below see, validated against the XSD at the end
+
+/** Every measure of every part: voice 1 written; each voice's notes and rests sum to exactly the
+ *  measure's ticks; <backup> rewinds exactly to the measure start; a <chord/> note shares its
+ *  chord's voice and duration. Returns each part's voice count. */
+function assertMeasures (xml, label) {
+	written.push(xml)
+	let problems = [], counts = []
+	for (let part of children(parseXml(xml), 'part')) {
+		let div, ts, voices = new Set()
+		for (let m of children(part, 'measure')) {
+			let attrs = child(m, 'attributes'), time = attrs && child(attrs, 'time')
+			if (attrs && child(attrs, 'divisions')) div = Number(text(attrs, 'divisions'))
+			if (time) ts = [Number(text(time, 'beats')), Number(text(time, 'beat-type'))]
+			let full = ts[0] * 4 / ts[1] * div, at = `${part.attrs.id} m${m.attrs.number}`
+			let sums = new Map(), pos = 0, head = null
+			for (let n of m.children) {
+				if (n.tag === 'backup') { if (Number(text(n, 'duration')) !== pos) problems.push(`${at}: <backup> ${text(n, 'duration')} from ${pos}`); pos = 0 }
+				if (n.tag !== 'note') continue
+				let v = text(n, 'voice'), d = Number(text(n, 'duration'))
+				if (!(d > 0) || !Number.isInteger(d)) problems.push(`${at}: duration ${d}`)
+				if (child(n, 'chord')) { if (head?.v !== v || head?.d !== d) problems.push(`${at}: <chord/> off its chord`); continue }
+				head = { v, d }
+				sums.set(v, (sums.get(v) ?? 0) + d)
+				pos += d
+				voices.add(v)
+			}
+			if (!sums.has('1')) problems.push(`${at}: no voice 1`)
+			for (let [v, t] of sums) if (t !== full) problems.push(`${at} voice ${v}: ${t} ticks in ${full}`)
+		}
+		counts.push(voices.size)
+	}
+	is(problems, [], `${label}: every voice fills every measure exactly`)
+	return counts
+}
+
+const quantizeAs = (notes, opts) => quantize(notes, { bpm: opts.bpm, grid: opts.quantize, triplets: opts.triplets })
+
+/** The most chords sounding at once: notes sharing onset and end are one chord, a pitch repeated
+ *  in it counting again. Greedy voice assignment by onset needs exactly this many voices. */
+function mostChords (q) {
+	let r = x => Math.round(x * 1e6), spans = new Map()
+	for (let n of q) {
+		let k = `${r(n.beat)}:${r(n.beat + n.beats)}`
+		if (!spans.has(k)) spans.set(k, { from: r(n.beat), to: r(n.beat + n.beats), pitches: [] })
+		spans.get(k).pitches.push(n.midi)
+	}
+	let edges = [...spans.values()].flatMap(s => {
+		let w = Math.max(...s.pitches.map(p => s.pitches.filter(x => x === p).length))
+		return [[s.from, w], [s.to, -w]]
+	}).sort((a, b) => a[0] - b[0] || a[1] - b[1])
+	let on = 0, most = 0
+	for (let [, w] of edges) most = Math.max(most, on += w)
+	return Math.max(1, most)
+}
+
+/** Write the score, check every measure and voice, the voice count, and that the notes read back
+ *  (start, duration, pitch) equal the input as the writer quantizes it. */
+function check (label, input, opts = {}) {
+	let parts = Array.isArray(input) ? [input] : input.parts.map(p => p.notes)
+	let xml = write(input, opts)
+	let q = parts.map(notes => quantizeAs(notes, opts))
+	is(assertMeasures(xml, label), q.map(mostChords), `${label}: as many voices as chords sounding at once`)
+	let bps = (opts.bpm ?? 120) / 60, key = (beat, beats, midi) => `${beat.toFixed(6)}+${beats.toFixed(6)}:${midi}`
+	let back = parse(xml).parts.map(p => p.notes.map(n => key(n.time * bps, n.duration * bps, n.midi)).sort())
+	is(back, q.map(qn => qn.map(n => key(n.beat, n.beats, n.midi)).sort()), `${label}: notes read back equal the quantized input`)
+	return xml
+}
+
+/** abcjs parses the tune with no warnings, as one system; every bar of every voice sums to the
+ *  meter (abcjs durations are in whole notes, a tuplet's scaled by its multiplier). */
+function assertAbc (abc, beatsPerBar, label) {
+	let [tune] = abcjs.parseOnly(abc)
+	is(tune.warnings ?? [], [], `${label}: abcjs parses it with no warnings`)
+	let lines = tune.lines.filter(l => l.staff)
+	is(lines.length, 1, `${label}: one system`)
+	let problems = [], voices = 0
+	for (let staff of lines[0].staff) for (let voice of staff.voices) {
+		voices++
+		let bar = 0, scale = 1, bars = 0
+		for (let el of voice) {
+			if (el.el_type === 'note') { if (el.startTriplet) scale = el.tripletMultiplier; bar += el.duration * scale; if (el.endTriplet) scale = 1 }
+			if (el.el_type !== 'bar') continue
+			bars++
+			if (Math.abs(bar * 4 - beatsPerBar) > 1e-9) problems.push(`voice ${voices} bar ${bars}: ${bar * 4} beats`)
+			bar = 0
+		}
+	}
+	is(problems, [], `${label}: every bar of every ABC voice fills the meter`)
+	return { voices, staves: lines[0].staff.map(s => s.voices.length) }
+}
+
+// J.S. Bach, BWV 846 Prelude in C, MIDI by the Mutopia Project, public domain — the fixture
+// @audio/midi-render tests with (see its test.js for provenance). Piano, 60 bpm, 4/4: a half-note
+// bass and a held tenor under 16th-note figures, up to 5 notes at once.
+const bwv846 = parseMidi(new Uint8Array(readFileSync(new URL('../midi-render/fixtures/bwv846-prelude.mid', import.meta.url))))
+	.notes.map(({ time, duration, midi, channel }) => ({ time, duration, midi, channel }))
+
+test('rhythm — every 1/24-beat multiple splits into notated values summing exactly, each value its type', () => {
+	const TYPE = { whole: 4, half: 2, quarter: 1, eighth: 0.5, '16th': 0.25, '32nd': 0.125, '64th': 0.0625 }
+	let off = []
+	for (let k = 1; k <= 96; k++) {
+		let beats = k / 24, run = decompose(beats)
+		if (Math.abs(run.reduce((s, p) => s + p.beats, 0) - beats) > 1e-9) off.push(`${k}/24 sums to ${run.reduce((s, p) => s + p.beats, 0)}`)
+		for (let p of run) if (Math.abs(TYPE[p.type] * (p.dots ? 1.5 : 1) * (p.tuplet ? 2 / 3 : 1) - p.beats) > 1e-9) off.push(`${k}/24: ${p.type}${p.dots ? '.' : ''}${p.tuplet ? ' 3:2' : ''} for ${p.beats}`)
+	}
+	is(off, [], 'k/24 beat, k = 1..96: the 1/8 grid, the triplet grids, and the gaps between them')
+	is(decompose(11 / 8).map(p => p.type + '.'.repeat(p.dots)), ['quarter', '16th.'], '11/8 beat: quarter tied to dotted 16th')
+})
+
+test('voices — a whole-note bass held under an eighth-note melody: two voices, each a full bar', () => {
+	let melody = [72, 74, 76, 77, 79, 77, 76, 74].map((midi, i) => ({ time: i / 2, duration: 0.5, midi }))
+	let bass = { time: 0, duration: 4, midi: 48 }
+	let xml = check('held bass', [bass, ...melody], { bpm: 60 })
+	is((xml.match(/<backup>/g) || []).length, 1, 'one <backup> to the second voice')
+	let back = parse(xml).parts[0].notes
+	ok(back.find(n => n.midi === 48).voice !== back.find(n => n.midi === 72).voice, 'bass and melody in separate voices')
+	is(write([...melody, bass], { bpm: 60 }), xml, 'input order does not change the score')
+})
+
+test('voices — a chord whose notes end at different times: equal lengths share a <chord/>, others take voices', () => {
+	let notes = [
+		{ time: 0, duration: 4, midi: 48 }, { time: 0, duration: 3, midi: 55 },
+		{ time: 0, duration: 2, midi: 64 }, { time: 0, duration: 2, midi: 67 }, { time: 1, duration: 1, midi: 72 },
+	]
+	let xml = check('staggered chord', notes, { bpm: 60 })
+	is((xml.match(/<chord\/>/g) || []).length, 1, 'E4 and G4, same onset and length: one chord')
+})
+
+test('voices — notes crossing barlines are cut and tied, each tie inside its voice', () => {
+	let notes = [{ time: 3, duration: 2, midi: 60 }, { time: 2.5, duration: 6, midi: 43 }, { time: 7.5, duration: 1.25, midi: 67 }]
+	let xml = check('across barlines', notes, { bpm: 60 })
+	is((xml.match(/<tie type="start"\/>/g) || []).length, 4, 'G2 cut at two barlines, C4 and G4 at one each')
+	is((xml.match(/<measure /g) || []).length, 3)
+})
+
+test('voices — a single note, and empty input: one voice of whole bars', () => {
+	check('single note', [{ time: 1, duration: 1.5, midi: 61 }], { bpm: 60 })
+	let xml = check('empty', [], { bpm: 60 })
+	ok(xml.includes('<rest measure="yes"/>'), 'empty input: one whole-measure rest')
+	assertAbc(toAbc([], { bpm: 60 }), 4, 'empty ABC')
+})
+
+test('voices — overlapping identical pitches: each sounding copy keeps its own voice', () => {
+	let notes = [
+		{ time: 0, duration: 2, midi: 60 }, { time: 1, duration: 2, midi: 60 }, { time: 1, duration: 2, midi: 60 },
+		{ time: 4, duration: 1, midi: 60 }, { time: 4, duration: 1, midi: 64 },
+	]
+	let xml = check('identical pitches', notes, { bpm: 60 })
+	is((xml.match(/<chord\/>/g) || []).length, 1, 'only C4 + E4 at beat 4 is a chord: a chord holds one notehead per pitch')
+})
+
+test('voices — BWV 846 prelude as one piano part: every bar exact, every note back, order-independent', () => {
+	let xml = check('BWV 846', bwv846, { bpm: 60 })
+	is((xml.match(/<measure /g) || []).length, 35, '140 beats of 4/4')
+	is(write([...bwv846].reverse(), { bpm: 60 }), xml, 'input order does not change the score')
+	check('BWV 846 hands', { parts: [{ name: 'Right hand', notes: bwv846.filter(n => n.channel === 1) }, { name: 'Left hand', notes: bwv846.filter(n => n.channel === 0) }] }, { bpm: 60 })
+})
+
+test('voices — seeded random polyphony over grids, triplets and meters: every bar exact, every note back', () => {
+	let seed = 846, rand = () => (seed = seed * 16807 % 2147483647) / 2147483647 // Park–Miller minimal standard
+	let meters = [[4, 4], [3, 4], [6, 8], [5, 4], [7, 8], [2, 2]]
+	for (let c = 0; c < 12; c++) {
+		let notes = Array.from({ length: 60 }, () => ({ time: rand() * 20, duration: 0.05 + rand() * 3, midi: 36 + Math.floor(rand() * 48) }))
+		let [num, den] = meters[c % meters.length]
+		let opts = { bpm: 60, quantize: [8, 16, 32][c % 3], triplets: c % 2 === 0, timeSignature: [num, den] }
+		check(`random ${c}`, notes, opts)
+		let { voices } = assertAbc(toAbc(notes, opts), num * 4 / den, `random ${c} ABC`)
+		is(voices, mostChords(quantizeAs(notes, opts)), `random ${c} ABC: one ABC voice per voice`)
+	}
+})
+
+test('toAbc — parts are voices of one tune (ABC 2.1 §7), a part\'s voices share its staff (§11.1 %%score)', () => {
+	let melody = [76, 77, 79, 77].map((midi, i) => ({ time: i, duration: 1, midi }))
+	let piano = [{ time: 0, duration: 4, midi: 48 }, { time: 0, duration: 2, midi: 64 }, { time: 2, duration: 2, midi: 65 }]
+	let abc = toAbc({ parts: [{ name: 'Melody', notes: melody }, { name: 'Piano', notes: piano }] }, { bpm: 60 })
+	ok(!/\n\s*\n/.test(abc), 'no blank line: a blank line ends a tune (§2.2.4)')
+	is((abc.match(/^X:/gm) || []).length, 1, 'one tune')
+	ok(abc.includes('%%score 1 (2 3)'), 'Melody on its own staff, the piano\'s two voices on one')
+	ok(abc.includes('V:1 name="Melody"') && abc.includes('V:2 name="Piano"'), 'each part named on its first voice')
+	is(assertAbc(abc, 4, 'two parts'), { voices: 3, staves: [1, 2] })
+})
+
+test('toAbc — BWV 846: one piano part, and both hands as two parts, parse in abcjs voice for voice', () => {
+	let one = assertAbc(toAbc(bwv846, { bpm: 60 }), 4, 'BWV 846 ABC')
+	is(one, { voices: mostChords(quantizeAs(bwv846, { bpm: 60 })), staves: [one.voices] }, 'every voice on the one staff')
+	let rh = bwv846.filter(n => n.channel === 1), lh = bwv846.filter(n => n.channel === 0)
+	let two = assertAbc(toAbc({ parts: [{ name: 'Right hand', notes: rh }, { name: 'Left hand', notes: lh }] }, { bpm: 60 }), 4, 'BWV 846 hands ABC')
+	let want = [rh, lh].map(n => mostChords(quantizeAs(n, { bpm: 60 })))
+	is(two, { voices: want[0] + want[1], staves: want })
+})
+
+// MusicXML 4.0 XSD, offline: tag v4.0 of github.com/w3c/musicxml, schema/musicxml.xsd with the
+// xml.xsd and xlink.xsd it imports saved beside it and its two <xs:import schemaLocation>s pointed
+// at those copies. Run: MUSICXML_XSD=/path/to/musicxml.xsd npm test (needs xmllint).
+const XSD = process.env.MUSICXML_XSD
+;(XSD ? test : test.skip)('MusicXML 4.0 XSD — every score the voice checks wrote validates (xmllint, MUSICXML_XSD)', () => {
+	for (let [i, xml] of written.entries()) {
+		let r = spawnSync('xmllint', ['--nonet', '--noout', '--schema', XSD, '-'], { input: xml, encoding: 'utf8' })
+		is(r.status, 0, `score ${i + 1} of ${written.length} is schema-valid` + (r.status ? ': ' + (r.stderr || r.error?.message || '').split('\n')[0] : ''))
+	}
 })

@@ -1,11 +1,16 @@
-// Quantized notes (one part, beat-grid) → measures of up to 2 voices, each voice a gapless
-// timeline of note/chord/rest events. Shared by the MusicXML and ABC writers so barline
-// splitting, tying, and voice assignment are implemented exactly once.
+// Quantized notes (one part, beat-grid) → measures of voices, each voice a gapless timeline of
+// note/chord/rest events that fills every measure exactly. Shared by the MusicXML and ABC
+// writers so voice assignment, barline splitting and tying are implemented exactly once.
 //
-// Voice assignment: notes sharing an onset (a "chord") split by duration into classes; the
-// largest class is voice 1 (marked with MusicXML <chord/> on the 2nd+ pitch), any other
-// duration class at that onset goes to voice 2 (<backup> in the MusicXML writer). A note
-// whose span crosses a measure boundary is cut at the barline and tied.
+// Voices are how notation holds overlapping notes on one staff (MusicXML 4.0 <voice>, <backup>,
+// <chord/>, https://www.w3.org/2021/06/musicxml40/; ABC 2.1 §7 V:,
+// https://abcnotation.com/wiki/abc:standard:v2.1): within one voice notes follow each other,
+// and notes sharing onset and end sound together as one chord. Assignment is greedy by onset,
+// highest pitch first: a note joins the chord a voice holds with the same onset and end (one
+// notehead per pitch), else takes the free voice whose last pitch is nearest (lowest number on
+// a tie), else opens a new voice. A voice opens only while every other one still sounds, so a
+// part has as many voices as it has chords sounding at once (greedy interval partitioning).
+// A note crossing a barline is cut there and tied, and keeps its voice.
 
 const EPS = 1e-6
 
@@ -25,35 +30,31 @@ export function measureEdges (maxBeat, beatsPerMeasure, pickup = false) {
 	return edges
 }
 
-function groupByOnset (notes) {
-	let groups = []
-	for (let n of notes) {
-		let g = groups[groups.length - 1]
-		if (g && Math.abs(g.beat - n.beat) < EPS) g.notes.push(n)
-		else groups.push({ beat: n.beat, notes: [n] })
-	}
-	return groups
-}
+const near = (a, b) => Math.abs(a - b) < EPS
 
-/** Split one part's notes into up to 2 voice timelines of {beat, beats, notes, tuplet} events. */
+/** Split one part's notes into voice timelines of non-overlapping {beat, beats, notes, tuplet} events. */
 function splitVoices (notes) {
-	let v1 = [], v2 = []
-	for (let g of groupByOnset(notes)) {
-		let byDur = new Map()
-		for (let n of g.notes) {
-			let key = Math.round(n.beats * 1e6)
-			if (!byDur.has(key)) byDur.set(key, [])
-			byDur.get(key).push(n)
+	let voices = [] // event lists; a voice's last event says whether it still sounds
+	let order = [...notes].sort((a, b) => a.beat - b.beat || b.midi - a.midi || b.beats - a.beats)
+	for (let n of order) {
+		let end = n.beat + n.beats
+		let chord = voices.find(v => {
+			let ev = v[v.length - 1]
+			return near(ev.beat, n.beat) && near(ev.beat + ev.beats, end) && !ev.notes.some(m => m.midi === n.midi)
+		})
+		if (chord) { chord[chord.length - 1].notes.push(n); continue }
+		let free = null, dist = Infinity
+		for (let v of voices) {
+			let ev = v[v.length - 1]
+			if (ev.beat + ev.beats > n.beat + EPS) continue // still sounding
+			let d = Math.min(...ev.notes.map(m => Math.abs(m.midi - n.midi)))
+			if (d < dist) { free = v; dist = d }
 		}
-		let classes = [...byDur.values()].sort((a, b) => b.length - a.length || b[0].beats - a[0].beats)
-		let primary = classes[0].sort((a, b) => a.midi - b.midi)
-		v1.push({ beat: g.beat, beats: primary[0].beats, notes: primary, tuplet: primary[0].tuplet })
-		if (classes.length > 1) {
-			let rest = classes.slice(1).flat().sort((a, b) => a.midi - b.midi)
-			v2.push({ beat: g.beat, beats: classes[1][0].beats, notes: rest, tuplet: classes[1][0].tuplet })
-		}
+		if (!free) voices.push(free = [])
+		free.push({ beat: n.beat, beats: n.beats, notes: [n], tuplet: n.tuplet })
 	}
-	return { v1, v2 }
+	for (let v of voices) for (let ev of v) ev.notes.sort((a, b) => a.midi - b.midi)
+	return voices.length ? voices : [[]]
 }
 
 /** Cut [beat, beat+beats) at every measure edge it crosses. */
@@ -113,13 +114,12 @@ function layoutVoice (events, edges) {
  * @param {number} opts.beatsPerMeasure
  * @param {boolean} [opts.pickup=false]
  * @returns {{ measures: Array<{ voices: Array<Array<{beat, beats, notes, tuplet, tie, rest}>>>}, edges: number[] }}
+ *   every measure lists every voice (voice n at index n − 1), each filled with rests to the measure's length
  */
 export default function toMeasures (notes, { beatsPerMeasure, pickup = false }) {
 	let maxBeat = notes.reduce((m, n) => Math.max(m, n.beat + n.beats), 0)
 	let edges = measureEdges(maxBeat, beatsPerMeasure, pickup)
-	let { v1, v2 } = splitVoices(notes)
-	let mv1 = layoutVoice(v1, edges)
-	let mv2 = v2.length ? layoutVoice(v2, edges) : null
-	let measures = mv1.map((events, i) => ({ voices: mv2 ? [events, mv2[i]] : [events] }))
+	let laid = splitVoices(notes).map(v => layoutVoice(v, edges))
+	let measures = laid[0].map((_, i) => ({ voices: laid.map(v => v[i]) }))
 	return { measures, edges }
 }

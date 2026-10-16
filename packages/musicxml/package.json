@@ -1,6 +1,6 @@
 {
   "name": "@audio/musicxml",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "MusicXML 4.0 writer/parser and ABC writer — note events ↔ notation",
   "type": "module",
   "sideEffects": false,
@@ -28,6 +28,8 @@
     "parts.js"
   ],
   "devDependencies": {
+    "@audio/midi-parse": "^1.0.3",
+    "abcjs": "^6.7.1",
     "tst": "^9.4.0"
   },
   "keywords": [
